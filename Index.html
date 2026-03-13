@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suman Jana UI</title>
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Segoe UI, Arial, sans-serif;
+}
+
+body{
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+background: linear-gradient(-45deg,#6a11cb,#2575fc,#ff6a00,#ee0979);
+background-size:400% 400%;
+animation:bg 10s infinite alternate;
+}
+
+@keyframes bg{
+0%{background-position:0% 50%;}
+100%{background-position:100% 50%;}
+}
+
+.container{
+text-align:center;
+}
+
+.card{
+width:350px;
+padding:40px;
+border-radius:20px;
+background: rgba(255,255,255,0.1);
+backdrop-filter: blur(15px);
+box-shadow:0 15px 40px rgba(0,0,0,0.4);
+color:white;
+transition:0.3s;
+}
+
+.card:hover{
+transform:translateY(-10px);
+}
+
+h1{
+font-size:32px;
+margin-bottom:10px;
+}
+
+h2{
+font-weight:400;
+margin-bottom:20px;
+opacity:0.9;
+}
+
+p{
+margin-bottom:25px;
+opacity:0.8;
+}
+
+button{
+padding:12px 30px;
+border:none;
+border-radius:30px;
+font-size:16px;
+background:linear-gradient(45deg,#ff6a00,#ee0979);
+color:white;
+cursor:pointer;
+transition:0.3s;
+}
+
+button:hover{
+transform:scale(1.1);
+box-shadow:0 0 20px rgba(255,255,255,0.7);
+}
+
+.footer{
+margin-top:20px;
+font-size:14px;
+opacity:0.7;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="card">
+<h1>Welcome</h1>
+<h2>Suman Jana</h2>
+
+<p>This is a modern animated UI built with HTML and CSS.</p>
+
+<button onclick="showMessage()">Click Me</button>
+
+<div class="footer">
+Created by Suman Jana
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+function showMessage(){
+alert("Hello Suman Jana 🚀 Welcome to your website!");
+}
+
+</script>
+
+</body>
+</html>
