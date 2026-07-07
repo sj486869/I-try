@@ -82,7 +82,8 @@ router.post('/', upload.single('file'), async (req, res) => {
       }
 
       // Last chunk received — assemble file
-      const storedName = `${fileId}${path.extname(originalName)}`;
+      // Keep original name (santized to prevent path traversal)
+      const storedName = path.basename(originalName);
       const finalPath = path.join(storageDir, storedName);
       const writeStream = fs.createWriteStream(finalPath);
 
@@ -101,43 +102,80 @@ router.post('/', upload.single('file'), async (req, res) => {
       });
 
       const stat = fs.statSync(finalPath);
-      const meta = createMeta(fileId, originalName, storedName, stat.size, req.file.mimetype, ownerId);
-      saveMeta(storageDir, fileId, meta);
+      
+      if (req.query.destination === 'b2' && process.env.B2_BUCKET_NAME && process.env.B2_BUCKET_NAME !== 'REPLACE_ME_WITH_BUCKET_NAME') {
+        const { uploadFileToB2 } = require('../services/s3');
+        await uploadFileToB2(finalPath, storedName);
+        fs.unlinkSync(finalPath); // Delete local temp file
 
-      return res.json({
-        status: 'complete',
-        fileId,
-        filename: originalName,
-        size: stat.size,
-        sizeHuman: formatBytes(stat.size),
-        mimeType: meta.mimeType,
-        uploadedAt: meta.uploadedAt,
-        streamUrl: `/stream/${fileId}`,
-      });
+        return res.json({
+          status: 'complete',
+          fileId: storedName, // In B2, the file ID is the key
+          filename: originalName,
+          size: stat.size,
+          sizeHuman: formatBytes(stat.size),
+          mimeType: req.file.mimetype || mime.lookup(originalName) || 'application/octet-stream',
+          uploadedAt: new Date().toISOString(),
+          streamUrl: `/stream/${storedName}`,
+        });
+      } else {
+        const meta = createMeta(fileId, originalName, storedName, stat.size, req.file.mimetype, ownerId);
+        saveMeta(storageDir, fileId, meta);
+
+        return res.json({
+          status: 'complete',
+          fileId,
+          filename: originalName,
+          size: stat.size,
+          sizeHuman: formatBytes(stat.size),
+          mimeType: meta.mimeType,
+          uploadedAt: meta.uploadedAt,
+          streamUrl: `/stream/${fileId}`,
+        });
+      }
 
     } else {
       // ── Single upload mode ────────────────────────────────────────────────────
       const ext = path.extname(originalName) || path.extname(req.file.originalname);
-      const storedName = `${fileId}${ext}`;
+      // Keep original name (santized to prevent path traversal)
+      const storedName = path.basename(originalName);
       const finalPath = path.join(storageDir, storedName);
 
       fs.renameSync(req.file.path, finalPath);
 
       const stat = fs.statSync(finalPath);
       const mimeType = req.file.mimetype || mime.lookup(originalName) || 'application/octet-stream';
-      const meta = createMeta(fileId, originalName, storedName, stat.size, mimeType, ownerId);
-      saveMeta(storageDir, fileId, meta);
 
-      return res.json({
-        status: 'complete',
-        fileId,
-        filename: originalName,
-        size: stat.size,
-        sizeHuman: formatBytes(stat.size),
-        mimeType,
-        uploadedAt: meta.uploadedAt,
-        streamUrl: `/stream/${fileId}`,
-      });
+      if (req.query.destination === 'b2' && process.env.B2_BUCKET_NAME && process.env.B2_BUCKET_NAME !== 'REPLACE_ME_WITH_BUCKET_NAME') {
+        const { uploadFileToB2 } = require('../services/s3');
+        await uploadFileToB2(finalPath, storedName);
+        fs.unlinkSync(finalPath); // Delete local temp file
+
+        return res.json({
+          status: 'complete',
+          fileId: storedName, // In B2, the file ID is the key
+          filename: originalName,
+          size: stat.size,
+          sizeHuman: formatBytes(stat.size),
+          mimeType,
+          uploadedAt: new Date().toISOString(),
+          streamUrl: `/stream/${storedName}`,
+        });
+      } else {
+        const meta = createMeta(fileId, originalName, storedName, stat.size, mimeType, ownerId);
+        saveMeta(storageDir, fileId, meta);
+
+        return res.json({
+          status: 'complete',
+          fileId,
+          filename: originalName,
+          size: stat.size,
+          sizeHuman: formatBytes(stat.size),
+          mimeType,
+          uploadedAt: meta.uploadedAt,
+          streamUrl: `/stream/${fileId}`,
+        });
+      }
     }
   } catch (err) {
     console.error('Upload error:', err);

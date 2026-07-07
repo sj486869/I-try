@@ -53,11 +53,19 @@ const streamRouter = require('./routes/stream');
 const uploadRouter = require('./routes/upload');
 const filesRouter = require('./routes/files');
 const workspaceRouter = require('./routes/workspace');
+const downloadRouter = require('./routes/download');
+
+// Services
+const { setupTelegramBot } = require('./services/telegramBot');
+
+// Initialize Telegram Bot
+setupTelegramBot(STORAGE_DIR);
 
 app.use('/stream', authMiddleware, streamRouter);
 app.use('/upload', authMiddleware, uploadRouter);
 app.use('/files', authMiddleware, filesRouter);
 app.use('/workspace', authMiddleware, workspaceRouter);
+app.use('/download', authMiddleware, downloadRouter);
 
 // ─── Health Check ───────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -103,8 +111,26 @@ app.get('/', (_req, res) => {
   });
 });
 
-// ─── WebSocket — Watch Together ─────────────────────────────────────────────────
-setupWebSocket(server);
+// ─── WebSocket — Watch Together & PTY ──────────────────────────────────────
+const wssRooms = setupWebSocket();
+const { setupPtyWebSocket } = require('./routes/pty');
+const wssPty = setupPtyWebSocket(STORAGE_DIR);
+
+server.on('upgrade', (request, socket, head) => {
+  const pathname = request.url;
+
+  if (pathname === '/watch-together') {
+    wssRooms.handleUpgrade(request, socket, head, (ws) => {
+      wssRooms.emit('connection', ws, request);
+    });
+  } else if (pathname === '/pty') {
+    wssPty.handleUpgrade(request, socket, head, (ws) => {
+      wssPty.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 
 // ─── Start ───────────────────────────────────────────────────────────────────────
 server.listen(PORT, HOST, () => {

@@ -4,24 +4,116 @@ const path = require('path');
 
 const router = express.Router();
 
+const mime = require('mime-types');
+const { v4: uuidv4 } = require('uuid');
+
+function syncRawFiles(storageDir) {
+  const allFiles = fs.readdirSync(storageDir);
+  
+  // Find all tracked storedNames
+  const trackedNames = new Set();
+  const jsonFiles = allFiles.filter(f => f.endsWith('.json'));
+  for (const jf of jsonFiles) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(storageDir, jf), 'utf8'));
+      if (meta.storedName) trackedNames.add(meta.storedName);
+    } catch (e) {
+      // ignore invalid json
+    }
+  }
+
+  const rawFiles = allFiles.filter(f => !f.endsWith('.json') && !f.includes('.chunk.') && !trackedNames.has(f));
+  
+  for (const rawFile of rawFiles) {
+    // Create metadata for this untracked file
+    const stat = fs.statSync(path.join(storageDir, rawFile));
+    if (stat.isDirectory()) continue;
+    
+    const safeFileId = uuidv4(); // Generate a safe ID just in case
+    
+    const ext = path.extname(rawFile).toLowerCase().replace('.', '');
+    let fileType = 'other';
+    if (['jpg','jpeg','png','gif','bmp','webp','svg'].includes(ext)) fileType = 'image';
+    else if (['mp4','avi','mkv','mov','wmv','flv','webm','m4v','ts'].includes(ext)) fileType = 'video';
+    else if (['mp3','wav','flac','aac','wma','ogg','m4a'].includes(ext)) fileType = 'audio';
+    else if (['pdf','doc','docx','txt','xlsx','xls','ppt','pptx'].includes(ext)) fileType = 'document';
+
+    const meta = {
+      fileId: safeFileId,
+      originalName: rawFile,
+      storedName: rawFile,
+      fileType,
+      mimeType: mime.lookup(rawFile) || 'application/octet-stream',
+      size: stat.size,
+      uploadedAt: stat.mtime.toISOString(),
+      ownerId: null,
+      visibility: 'public', // Make terminal downloads public by default so they can see them
+      sharedWith: []
+    };
+    
+    fs.writeFileSync(path.join(storageDir, `${safeFileId}.json`), JSON.stringify(meta, null, 2));
+  }
+}
+
 /**
  * GET /files
  * List all uploaded files with metadata.
  * Optional query: ?type=video|image|audio|document
  */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const storageDir = req.storageDir;
   const typeFilter = req.query.type;
 
   try {
+    let files = [];
+    
+    // 1. Fetch Local Files
+    syncRawFiles(storageDir);
     const metaFiles = fs.readdirSync(storageDir).filter(f => f.endsWith('.json'));
-    let files = metaFiles.map(f => {
+    const localFiles = metaFiles.map(f => {
       try {
-        return JSON.parse(fs.readFileSync(path.join(storageDir, f), 'utf8'));
+        const parsed = JSON.parse(fs.readFileSync(path.join(storageDir, f), 'utf8'));
+        parsed.source = 'media-server-local';
+        return parsed;
       } catch {
         return null;
       }
     }).filter(Boolean);
+    files.push(...localFiles);
+
+    // 2. Fetch B2 Files
+    if (process.env.B2_BUCKET_NAME && process.env.B2_BUCKET_NAME !== 'REPLACE_ME_WITH_BUCKET_NAME') {
+      try {
+        const { listVideosFromB2 } = require('../services/s3');
+        const s3Files = await listVideosFromB2();
+        const cloudFiles = s3Files.map(item => {
+          const rawFile = item.name;
+          const ext = path.extname(rawFile).toLowerCase().replace('.', '');
+          let fileType = 'other';
+          if (['jpg','jpeg','png','gif','bmp','webp','svg'].includes(ext)) fileType = 'image';
+          else if (['mp4','avi','mkv','mov','wmv','flv','webm','m4v','ts'].includes(ext)) fileType = 'video';
+          else if (['mp3','wav','flac','aac','wma','ogg','m4a'].includes(ext)) fileType = 'audio';
+          else if (['pdf','doc','docx','txt','xlsx','xls','ppt','pptx'].includes(ext)) fileType = 'document';
+
+          return {
+            fileId: rawFile, // In B2, the file ID is just the key name
+            originalName: rawFile,
+            storedName: rawFile,
+            fileType,
+            mimeType: mime.lookup(rawFile) || 'application/octet-stream',
+            size: item.size,
+            uploadedAt: item.lastModified ? new Date(item.lastModified).toISOString() : new Date().toISOString(),
+            ownerId: null,
+            visibility: 'public',
+            sharedWith: [],
+            source: 'media-server-b2'
+          };
+        });
+        files.push(...cloudFiles);
+      } catch (err) {
+        console.error('Failed to list B2 files:', err);
+      }
+    }
 
     const userId = req.query.userId;
     const role = req.query.role;
@@ -131,6 +223,7 @@ router.delete('/:fileId', (req, res) => {
 router.get('/stats/summary', (req, res) => {
   const storageDir = req.storageDir;
   try {
+    syncRawFiles(storageDir);
     const metaFiles = fs.readdirSync(storageDir).filter(f => f.endsWith('.json'));
     let files = metaFiles.map(f => {
       try { return JSON.parse(fs.readFileSync(path.join(storageDir, f), 'utf8')); }

@@ -12,26 +12,56 @@ const router = express.Router();
  * Supports partial content (206) for seeking without re-downloading.
  * Works with files of ANY size — nothing is buffered in memory.
  */
-router.get('/:fileId', (req, res) => {
+router.get('/:fileId', async (req, res) => {
   const { fileId } = req.params;
   const storageDir = req.storageDir;
 
-  // Load metadata
+  let meta = null;
+  let filePath = null;
+  let existsLocally = false;
+
+  // 1. Try to load metadata if it exists
   const metaPath = path.join(storageDir, `${fileId}.json`);
-  if (!fs.existsSync(metaPath)) {
-    return res.status(404).json({ error: 'File not found' });
+  if (fs.existsSync(metaPath)) {
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      filePath = path.join(storageDir, meta.storedName);
+      if (fs.existsSync(filePath)) {
+        existsLocally = true;
+      }
+    } catch (e) {
+      console.error('Failed to parse meta:', e);
+    }
   }
 
-  let meta;
-  try {
-    meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-  } catch {
-    return res.status(500).json({ error: 'Failed to read file metadata' });
+  // 2. If no meta, maybe fileId IS the raw filename
+  if (!existsLocally) {
+    const rawPath = path.join(storageDir, fileId);
+    if (fs.existsSync(rawPath) && !fs.statSync(rawPath).isDirectory()) {
+      existsLocally = true;
+      filePath = rawPath;
+      meta = { 
+        storedName: fileId, 
+        originalName: fileId, 
+        mimeType: mime.lookup(fileId) || 'application/octet-stream' 
+      };
+    }
   }
 
-  const filePath = path.join(storageDir, meta.storedName);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Video file not found on disk' });
+  // 3. If not found locally, try B2
+  if (!existsLocally) {
+    if (process.env.B2_BUCKET_NAME && process.env.B2_BUCKET_NAME !== 'REPLACE_ME_WITH_BUCKET_NAME') {
+      try {
+        const { getPresignedVideoUrl } = require('../services/s3');
+        const presignedUrl = await getPresignedVideoUrl(fileId); // fileId is the S3 key
+        return res.redirect(presignedUrl);
+      } catch (e) {
+        console.error('[Stream] S3 Presigned URL error:', e);
+        return res.status(500).json({ error: 'Failed to stream from S3' });
+      }
+    } else {
+      return res.status(404).json({ error: 'Video file not found on disk or B2 not configured' });
+    }
   }
 
   const stat = fs.statSync(filePath);

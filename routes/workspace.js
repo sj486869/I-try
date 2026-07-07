@@ -58,6 +58,55 @@ router.get('/tree', (req, res) => {
   }
 });
 
+// ─── API: Search Workspace ───
+router.get('/search', (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.json({ results: [] });
+
+  const queryLower = q.toLowerCase();
+  const results = [];
+
+  const searchDir = (dirPath, relativePath = '') => {
+    if (!fs.existsSync(dirPath)) return;
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+      if (item === 'node_modules' || item === '.git') continue;
+      
+      const fullPath = path.join(dirPath, item);
+      const stat = fs.statSync(fullPath);
+      const itemRelativePath = path.join(relativePath, item).replace(/\\/g, '/');
+
+      if (stat.isDirectory()) {
+        searchDir(fullPath, itemRelativePath);
+        if (results.length > 200) return;
+      } else {
+        if (stat.size > 1024 * 1024) continue;
+        try {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          const lines = content.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes(queryLower)) {
+              results.push({
+                file: itemRelativePath,
+                line: i + 1,
+                text: lines[i].trim()
+              });
+              if (results.length > 200) return;
+            }
+          }
+        } catch (e) { }
+      }
+    }
+  };
+
+  try {
+    searchDir(WORKSPACE_DIR);
+    res.json({ results });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── API: Read File ───
 router.get('/file', (req, res) => {
   const { path: filePath } = req.query;
@@ -150,8 +199,17 @@ router.post('/rename', (req, res) => {
   }
 });
 
+// ─── Middleware: Check Admin Role ───
+const requireAdmin = (req, res, next) => {
+  const role = req.headers['x-user-role'] || 'guest';
+  if (role !== 'admin') {
+    return res.status(403).json({ error: 'Permission denied: Only admins can execute arbitrary terminal commands.' });
+  }
+  next();
+};
+
 // ─── API: Execute Code (Node.js) ───
-router.post('/run', (req, res) => {
+router.post('/run', requireAdmin, (req, res) => {
   const { path: filePath } = req.body;
   if (!filePath) return res.status(400).json({ error: 'Path is required' });
   
@@ -176,7 +234,7 @@ router.post('/run', (req, res) => {
 });
 
 // ─── API: Generic Terminal Command ───
-router.post('/terminal', (req, res) => {
+router.post('/terminal', requireAdmin, (req, res) => {
   const { command } = req.body;
   if (!command) return res.status(400).json({ error: 'Command is required' });
   

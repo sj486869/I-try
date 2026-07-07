@@ -62,11 +62,8 @@ function getParticipantList(room) {
   }));
 }
 
-function setupWebSocket(server) {
-  const wss = new WebSocketServer({
-    server,
-    path: '/watch-together',
-  });
+function setupWebSocket() {
+  const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws, req) => {
     const clientId = uuidv4();
