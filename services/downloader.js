@@ -218,15 +218,18 @@ async function downloadFile(url, storageDir, destination = 'local') {
         noWarnings: true,
         preferFreeFormats: true,
         format: 'best',
-        // Try multiple clients to bypass generic 429
-        extractorArgs: 'youtube:player_client=ios,android,web',
       };
 
       // If user provided cookies.txt to bypass YouTube's 'Sign in to confirm you are not a bot'
       const cookiesPath = path.join(__dirname, '..', 'cookies.txt');
       if (fs.existsSync(cookiesPath)) {
         ytdlOptions.cookies = cookiesPath;
+        // When using cookies, we must use web clients. Removing mobile clients.
+        ytdlOptions.extractorArgs = 'youtube:player_client=web,tv';
         console.log(`[Downloader] Using cookies.txt for yt-dlp authentication`);
+      } else {
+        // Try multiple clients to bypass generic 429 when no cookies are available
+        ytdlOptions.extractorArgs = 'youtube:player_client=ios,android,web';
       }
 
       await youtubedl(url, ytdlOptions);
