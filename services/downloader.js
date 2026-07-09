@@ -218,10 +218,8 @@ async function downloadFile(url, storageDir, destination = 'local') {
         noWarnings: true,
         preferFreeFormats: true,
         format: 'best',
-        addHeader: [
-          'referer:youtube.com',
-          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-        ]
+        // Bypass YouTube 429 blocking by pretending to be an Android client
+        extractorArgs: 'youtube:player_client=android',
       });
 
       const files = fs.readdirSync(storageDir);
@@ -232,9 +230,18 @@ async function downloadFile(url, storageDir, destination = 'local') {
         await _uploadAndCleanup(fullPath, originalFilename, destination);
         console.log(`[Downloader] yt-dlp success: ${originalFilename}`);
         return { success: true, filename: originalFilename };
+      } else {
+        throw new Error('yt-dlp succeeded but file was not found on disk.');
       }
     } catch (err) {
-      console.error(`[Downloader] yt-dlp failed, trying direct download...`);
+      console.error(`[Downloader] yt-dlp failed:`, err.message);
+      
+      // If it's a known video platform, do not fallback to direct HTTP (it will just return HTML or 429)
+      if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('instagram.com') || url.includes('tiktok.com')) {
+        throw new Error(`Video extraction failed. YouTube/Platform might be blocking the request or restricting it (e.g. 429 Too Many Requests). Details: ${err.message.split('\n')[0]}`);
+      }
+      
+      console.log(`[Downloader] Falling back to direct download...`);
     }
   }
 
