@@ -1,11 +1,12 @@
 const express = require('express');
-const { downloadVideo } = require('../services/downloader');
+const { downloadFile } = require('../services/downloader');
 
 const router = express.Router();
 
 /**
  * POST /download
- * Body: { url: string }
+ * Body: { url: string, destination?: 'local' | 'b2' }
+ * Downloads any file type: zip, rar, apk, mp3, mp4, pdf, etc.
  */
 router.post('/', async (req, res) => {
   const { url, destination } = req.body;
@@ -16,8 +17,8 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    await downloadVideo(url, storageDir, destination || 'local');
-    res.json({ success: true, message: 'Download complete' });
+    const result = await downloadFile(url, storageDir, destination || 'local');
+    res.json({ success: true, message: 'Download complete', filename: result.filename });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
