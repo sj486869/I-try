@@ -213,14 +213,23 @@ async function downloadFile(url, storageDir, destination = 'local') {
       const prefix = `TMP_${id}_`;
       const outputTemplate = path.join(storageDir, `${prefix}%(title)s.%(ext)s`);
 
-      await youtubedl(url, {
+      const ytdlOptions = {
         output: outputTemplate,
         noWarnings: true,
         preferFreeFormats: true,
         format: 'best',
-        // Bypass YouTube 429 blocking by pretending to be an Android client
-        extractorArgs: 'youtube:player_client=android',
-      });
+        // Try multiple clients to bypass generic 429
+        extractorArgs: 'youtube:player_client=ios,android,web',
+      };
+
+      // If user provided cookies.txt to bypass YouTube's 'Sign in to confirm you are not a bot'
+      const cookiesPath = path.join(__dirname, '..', 'cookies.txt');
+      if (fs.existsSync(cookiesPath)) {
+        ytdlOptions.cookies = cookiesPath;
+        console.log(`[Downloader] Using cookies.txt for yt-dlp authentication`);
+      }
+
+      await youtubedl(url, ytdlOptions);
 
       const files = fs.readdirSync(storageDir);
       const downloaded = files.find(f => f.startsWith(prefix));
