@@ -226,13 +226,12 @@ async function downloadFile(url, storageDir, destination = 'local') {
       const cookiesPath = path.join(__dirname, '..', 'cookies.txt');
       if (fs.existsSync(cookiesPath)) {
         ytdlOptions.cookies = cookiesPath;
-        // When using cookies, we must use web clients. Removing mobile clients.
-        ytdlOptions.extractorArgs = 'youtube:player_client=tv_embedded,web,tv';
         console.log(`[Downloader] Using cookies.txt for yt-dlp authentication`);
-      } else {
-        // Try multiple clients to bypass generic 429 when no cookies are available
-        ytdlOptions.extractorArgs = 'youtube:player_client=tv_embedded,ios,android,web';
       }
+      
+      // Use android_vr client as it has the highest success rate in bypassing YouTube's bot detection 
+      // without failing on missing formats (unlike tv_embedded or ios).
+      ytdlOptions.extractorArgs = 'youtube:player_client=android_vr,web,tv';
 
       await youtubedl(url, ytdlOptions);
 
