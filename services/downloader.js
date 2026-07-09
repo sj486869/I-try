@@ -217,7 +217,9 @@ async function downloadFile(url, storageDir, destination = 'local') {
         output: outputTemplate,
         noWarnings: true,
         preferFreeFormats: true,
-        format: 'best',
+        // 'b' (best) forces yt-dlp to pick a single file with both video and audio. 
+        // This prevents the "Requested format not available" error when FFmpeg is missing.
+        format: 'b',
       };
 
       // If user provided cookies.txt to bypass YouTube's 'Sign in to confirm you are not a bot'
@@ -225,11 +227,11 @@ async function downloadFile(url, storageDir, destination = 'local') {
       if (fs.existsSync(cookiesPath)) {
         ytdlOptions.cookies = cookiesPath;
         // When using cookies, we must use web clients. Removing mobile clients.
-        ytdlOptions.extractorArgs = 'youtube:player_client=web,tv';
+        ytdlOptions.extractorArgs = 'youtube:player_client=tv_embedded,web,tv';
         console.log(`[Downloader] Using cookies.txt for yt-dlp authentication`);
       } else {
         // Try multiple clients to bypass generic 429 when no cookies are available
-        ytdlOptions.extractorArgs = 'youtube:player_client=ios,android,web';
+        ytdlOptions.extractorArgs = 'youtube:player_client=tv_embedded,ios,android,web';
       }
 
       await youtubedl(url, ytdlOptions);
