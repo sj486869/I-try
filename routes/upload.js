@@ -82,8 +82,8 @@ router.post('/', upload.single('file'), async (req, res) => {
       }
 
       // Last chunk received — assemble file
-      // Keep original name (santized to prevent path traversal)
-      const storedName = path.basename(originalName);
+      // Keep original name but sanitize storedName to prevent S3 invalid key issues and path traversal
+      const storedName = path.basename(originalName).replace(/[^a-zA-Z0-9.\-_]/g, '_');
       const finalPath = path.join(storageDir, storedName);
       const writeStream = fs.createWriteStream(finalPath);
 
@@ -137,8 +137,8 @@ router.post('/', upload.single('file'), async (req, res) => {
     } else {
       // ── Single upload mode ────────────────────────────────────────────────────
       const ext = path.extname(originalName) || path.extname(req.file.originalname);
-      // Keep original name (santized to prevent path traversal)
-      const storedName = path.basename(originalName);
+      // Keep original name but sanitize storedName to prevent S3 invalid key issues and path traversal
+      const storedName = path.basename(originalName).replace(/[^a-zA-Z0-9.\-_]/g, '_');
       const finalPath = path.join(storageDir, storedName);
 
       fs.renameSync(req.file.path, finalPath);
